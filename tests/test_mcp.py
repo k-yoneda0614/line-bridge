@@ -83,3 +83,35 @@ def test_encode_localpart_matches_mautrix():
     assert line_mcp.encode_localpart("UA_BcD") == "_u_a___bc_d"
     assert line_mcp.encode_localpart("u-3.x+9") == "u-3.x+9"
     assert line_mcp.encode_localpart("a@b") == "a=40b"
+
+
+def test_sensitive_paths_are_refused(tmp_path):
+    home = line_mcp.Path.home()
+    # Directory rule (names that do not look like credentials on their own)
+    assert line_mcp.sensitive_path(home / ".ssh" / "known_hosts")
+    assert line_mcp.sensitive_path(line_mcp.DATA_DIR / "bridge" / "config.yaml")
+    assert line_mcp.sensitive_path(home / "Library" / "Keychains" / "login.db")
+    # Name rule
+    assert line_mcp.sensitive_path(home / ".ssh" / "id_ed25519")
+    assert line_mcp.sensitive_path(line_mcp.DATA_DIR / "credentials.json")
+    assert line_mcp.sensitive_path(tmp_path / ".env")
+    assert line_mcp.sensitive_path(tmp_path / "server.pem")
+    assert line_mcp.sensitive_path(tmp_path / "aws_credentials.csv")
+    assert line_mcp.sensitive_path(tmp_path / "photo.jpg") is None
+    # Media downloaded from LINE can be forwarded even though it lives in the data dir.
+    assert line_mcp.sensitive_path(line_mcp.MEDIA_DIR / "x.jpg") is None
+
+
+def test_msgtype_for_mime():
+    assert line_mcp.msgtype_for("image/png") == "m.image"
+    assert line_mcp.msgtype_for("video/mp4") == "m.video"
+    assert line_mcp.msgtype_for("audio/m4a") == "m.audio"
+    assert line_mcp.msgtype_for("application/pdf") == "m.file"
+
+
+def test_format_event_marks_media():
+    m = make_matrix()
+    out = m.format_event("!r", {"type": "m.room.message", "sender": ME, "content": {"msgtype": "m.image", "body": "a.jpg", "url": "mxc://line.local/x", "info": {"mimetype": "image/jpeg"}}})
+    assert out["has_media"] is True and out["mimetype"] == "image/jpeg"
+    text = m.format_event("!r", {"type": "m.room.message", "sender": ME, "content": {"msgtype": "m.text", "body": "hi"}})
+    assert "has_media" not in text

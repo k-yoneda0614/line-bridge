@@ -92,7 +92,8 @@ def main() -> None:
     # --- Claude Code guard ----------------------------------------------------
     settings = json.loads((Path.home() / ".claude" / "settings.json").read_text())
     ask = settings.get("permissions", {}).get("ask", [])
-    check("Claude Code asks before every LINE send", "mcp__line__line_send_message" in ask)
+    for tool in ("mcp__line__line_send_message", "mcp__line__line_send_media"):
+        check(f"Claude Code asks before every {tool.rsplit('__', 1)[1]}", tool in ask)
 
     # --- health -----------------------------------------------------------------
     who = httpx.get(f"{prov}/whoami", params={"user_id": creds["user_id"]}, headers=auth).json()
