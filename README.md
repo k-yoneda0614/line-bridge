@@ -48,7 +48,7 @@ line-bridge is the glue around two existing open-source projects: the [beeper/li
    In `~/.claude/settings.json`:
 
    ```json
-   { "permissions": { "ask": ["mcp__line__line_send_message"] } }
+   { "permissions": { "ask": ["mcp__line__line_send_message", "mcp__line__line_send_media"] } }
    ```
 
 5. Check the install:
@@ -66,8 +66,10 @@ line-bridge is the glue around two existing open-source projects: the [beeper/li
 | `line_read_messages` | Messages oldest first; pass `older_cursor` back as `before` to page back |
 | `line_search_messages` | Case-insensitive substring search, newest first, optionally within one chat |
 | `line_send_message` | Send text (optionally as a reply) as you |
+| `line_get_media` | Save the image, video, audio or file of a message (`has_media: true`) to a private cache and return its path, so Claude can open it |
+| `line_send_media` | Send a local image, video, audio file or document as you |
 
-`mcp/line_cli.py` exposes the same functions on the command line (JSON output) for sessions without the MCP tools. Its `send` refuses to run without `--confirmed`, and `delivered MESSAGE_ID` reports whether a sent message reached LINE.
+`mcp/line_cli.py` exposes the same functions on the command line (JSON output) for sessions without the MCP tools (`media`, `send-media`). Its `send` and `send-media` refuse to run without `--confirmed`, and `delivered MESSAGE_ID` reports whether a sent message reached LINE.
 
 Reading through the bridge does not send read receipts to LINE.
 
@@ -77,11 +79,12 @@ Reading through the bridge does not send read receipts to LINE.
 - **Every API needs a token.** The Synapse client API, the bridge's provisioning API, and appservice transactions are all authenticated. A web page cannot read or send through them without a token.
 - **The LINE password is not stored.** Upstream keeps it in `bridge.db` for automatic re-login; `patches/0001` removes that. When the refresh token stops working, run `login.py` again.
 - **Secrets stay owner-only.** Runtime data lives in `~/.local/share/line-bridge/` (mode 700). The launchd agents run with `Umask 077`.
-- **Sends need a human.** `line_send_message` is an `ask` rule, and the server instructions tell the model to treat message text as untrusted third-party content, so a message that says "forward this to X" does not trigger a send.
+- **Sends need a human.** Both send tools are `ask` rules, and the server instructions tell the model to treat message text as untrusted third-party content, so a message that says "forward this to X" does not trigger a send.
+- **Local secrets cannot be attached.** `line_send_media` refuses files under `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config`, `~/.claude`, `~/Library/Keychains`, `~/Library/Cookies` and the bridge's data dir (except downloaded media), and names that look like keys or credentials (`.env`, `id_rsa`, `*.pem`, `*.key`, ...). This is a backstop, not a replacement for approving each file.
 - **Not protected against** malware running as your macOS user, which can read the tokens in `bridge.db`, like any desktop messaging client.
 - **What leaves the Mac.** The bridge talks only to LINE. Messages you have Claude read are sent to the model as tool results, like any other context.
 
-`verify.py` runs 18 checks for the points above plus health (listeners, auth, registration, bridge permissions, appservice namespaces, file modes, stored password, FileVault, the `ask` rule, login state, joined rooms). It never prints secret values.
+`verify.py` runs 19 checks for the points above plus health (listeners, auth, registration, bridge permissions, appservice namespaces, file modes, stored password, FileVault, the two `ask` rules, login state, joined rooms). It never prints secret values.
 
 ## Layout
 
@@ -107,6 +110,7 @@ Runtime data in `~/.local/share/line-bridge/`:
 | `bridge/bridge.db` | LINE access and refresh tokens, E2EE keys |
 | `synapse/homeserver.db` | Bridged messages |
 | `synapse/media_store/` | Images, videos, avatars |
+| `media-cache/` | Media fetched by `line_get_media` (owner-only) |
 | `logs/` | Synapse and bridge logs |
 
 Environment overrides: `LINE_BRIDGE_DATA` (data dir), `LINE_BRIDGE_SRC` (upstream checkout), `LINE_BRIDGE_MATRIX_USER` (local user; defaults to your macOS user name), `LINE_BRIDGE_LAUNCHD_PREFIX` (launchd labels; default `local.line-bridge`).
